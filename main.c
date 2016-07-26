@@ -136,6 +136,31 @@ char* addVars(char *s1, char *s2)
     strcat(result, s2);
     return result;
 }
+char* get_filename(char* extension,char* directory) {
+  DIR *dir;
+  struct dirent *ent;
+  char* chr;
+  int found = 0;
+  if ((dir = opendir(directory)) == NULL) {
+    perror("");
+    return NULL;
+  }
+  while((ent = readdir(dir)) != NULL) {
+    chr = strrchr(ent->d_name,'.');
+    if(chr) {
+      if(strncmp(extension,chr,strlen(extension)) == 0) {
+        found = 1;
+        break;
+      }
+    }
+  }
+  closedir(dir);
+  if(found == 1) {
+    return ent->d_name;
+  } else {
+    return NULL;
+  }
+}
 
 int cp(const char *from, const char *to)
 {
@@ -223,6 +248,7 @@ void plistconv(char* infile, char* outfile) {
 int main(int argc, char* argv[]) {
   char cwd[1024];
   getcwd(cwd, sizeof(cwd));
+  char* appname;
 	removeDir("/tmp/ipawork/");
 	char* tmpdir = "/tmp/ipawork/";
 	if (argc <= 5) {
@@ -250,26 +276,13 @@ int main(int argc, char* argv[]) {
     printf("File is not a .deb or .ipa. Not compatable.\n");
     exit(0);
   }
-	run_cmd("ls /tmp/ipawork/Payload/ | grep \".app\" > /tmp/ipawork/appname");
-	// ik, this is really messy.
-	FILE* appnamefile = fopen("/tmp/ipawork/appname","r");
-	fseek(appnamefile,0L,SEEK_END);
-	long appnamesize = ftell(appnamefile);
-	char appname[appnamesize-1];
-	fseek(appnamefile,0,SEEK_SET);
-	fread(&appname,1,sizeof(appname),appnamefile);
-	char* newappname = appname;
-	newappname[strlen(newappname)] = 0;
-	printf("%s\n",newappname);
-	char* appCheck = strrchr(newappname,'.');
-	/* if ( strcmp(appCheck,".app") != 0) {
-		printf("\aExtensions do not match... Run again. This error is bound to happen at some point.\n");
-		exit(0);
-	} */
-	char* appFolderone = addVars("/tmp/ipawork/Payload/",newappname);
+	appname = get_filename(".app","/tmp/ipawork/Payload/");
+  if(!appname) {
+    printf("Failed to find .app file\n");
+  }
+  printf("App in IPA: %s\n",appname);
+	char* appFolderone = addVars("/tmp/ipawork/Payload/",appname);
 	char* appFolder = addVars(appFolderone,"/");
-	fclose(appnamefile);
-	remove("/tmp/ipawork/appname");
 	printf("Moving provisioning profile into place...\n");
 	cp(argv[2],"/tmp/ipawork/embedded.mobileprovision");
 	char* devstringone = addVars("\"",argv[4]);
@@ -285,7 +298,7 @@ int main(int argc, char* argv[]) {
 	char* infoPlistWriteTwo = addVars(infoPlistWriteOne,"\" \"CFBundleIdentifier\" \"");
 	char* infoPlistWriteThree = addVars(infoPlistWriteTwo,argv[3]);
 	char* infoPlistWrite = addVars(infoPlistWriteThree,"\"");
-	printf("Modifying CFBundleIdentifier for %s\n",newappname);
+	printf("Modifying CFBundleIdentifier for %s\n",appname);
 	run_cmd(infoPlistWrite);
 	char* newprovisionLoc = addVars(appFolder,"embedded.mobileprovision");
 	printf("Provisioning...\n");
@@ -299,7 +312,7 @@ int main(int argc, char* argv[]) {
 	printf("Cleaning...\n");
 	remove("/tmp/ipawork/Payload/.DS_Store");
 	printf("Building IPA file...\n");
-	char* ipanameone = newappname;
+	char* ipanameone = appname;
 	ipanameone[strlen(ipanameone)-4] = 0;
 	char* ipaname = addVars(ipanameone,".ipa");
 	chdir("/tmp/ipawork/");
